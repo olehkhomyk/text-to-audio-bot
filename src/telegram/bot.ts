@@ -1,18 +1,29 @@
 import { session, Telegraf } from 'telegraf';
 import { message } from 'telegraf/filters';
-import OpenAI from 'openai';
+import { ElevenLabsClient } from "elevenlabs";
 
 export class TelegramBot {
   private bot: Telegraf;
-  private openai: OpenAI;
+  private elevenlabs: ElevenLabsClient;
 
   constructor() {
     this.bot = new Telegraf(process.env.TG_BOT_TOKEN || '');
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
+    this.elevenlabs = new ElevenLabsClient({
+      apiKey: process.env.ELEVENLABS_API_KEY
     });
 
     this.init();
+    // this.listVoiceWithIds();
+  }
+
+  async listVoiceWithIds() {
+    const voices = await this.elevenlabs.voices.getAll();
+    voices.voices.forEach(voice => {
+      console.log(`Name: ${voice.name}`);
+      console.log(`ID: ${voice.voice_id}`);
+      console.log(`Category: ${voice.category}`);
+      console.log('---');
+    });
   }
 
   private async init() {
@@ -22,30 +33,39 @@ export class TelegramBot {
     await this.bot.launch();
   }
 
-  initMessageListener(): void {
+  async initMessageListener() {
     this.bot.on(message('text'), async (ctx) => {
-      // const userText = ctx.message.text;
-      // console.log('Received text:', userText);
-      // await ctx.reply(`You said: ${userText}`);
       const userText = ctx.message.text;
-
-      // Показуємо що бот "записує голос"
       await ctx.sendChatAction('record_voice');
-
-      try {
-        const mp3 = await this.openai.audio.speech.create({
-          model: "tts-1", // або "tts-1-hd" для кращої якості (+дорожче)
-          voice: "alloy", // alloy, echo, fable, onyx, nova, shimmer
-          input: userText,
-        });
-
-        const buffer = Buffer.from(await mp3.arrayBuffer());
-
-        await ctx.replyWithVoice({ source: buffer });
-      } catch (error: any) {
-        console.error('Error generating speech:', error);
-        await ctx.reply(`Помилка: ${error.message || 'Не вдалось згенерувати аудіо'}`);
-      }
+      await this.textToSpeech(userText, ctx);
     });
+
+    this.bot.on(message('caption'), async (ctx) => {
+      const userText = ctx.message.caption;
+      await ctx.sendChatAction('record_voice');
+      await this.textToSpeech(userText, ctx);
+    });
+  }
+
+  private async textToSpeech(text: string, ctx: any) {
+    try {
+      const voiceId = "GVRiwBELe0czFUAJj0nX"; // Anton (UA)
+
+      const audio = await this.elevenlabs.textToSpeech.convertAsStream(voiceId, {
+        text: text,
+        model_id: "eleven_multilingual_v2" // підтримує українську!
+      });
+
+      // Збираємо stream в buffer
+      const chunks: Buffer[] = [];
+      for await (const chunk of audio) {
+        chunks.push(chunk);
+      }
+      const audioBuffer = Buffer.concat(chunks);
+      await ctx.replyWithVoice({ source: audioBuffer });
+    } catch (error) {
+      console.error('Error:', error);
+      await ctx.reply('Помилка генерації 😞');
+    }
   }
 }
