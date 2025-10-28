@@ -14,11 +14,17 @@ if (process.env.NODE_ENV !== 'production') {
 if (!process.env.TG_BOT_TOKEN) {
   console.error('❌ TG_BOT_TOKEN is not set!');
   process.exit(1);
+} else {
+  const tokenPreview = process.env.TG_BOT_TOKEN.substring(0, 15) + '...';
+  console.log(`✅ TG_BOT_TOKEN loaded: ${tokenPreview}`);
 }
 
 if (!process.env.ELEVENLABS_API_KEY) {
   console.error('❌ ELEVENLABS_API_KEY is not set!');
   process.exit(1);
+} else {
+  const keyPreview = process.env.ELEVENLABS_API_KEY.substring(0, 8) + '...';
+  console.log(`✅ ELEVENLABS_API_KEY loaded: ${keyPreview}`);
 }
 
 // Асинхронний запуск

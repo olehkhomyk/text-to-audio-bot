@@ -8,8 +8,15 @@ export class TelegramBot {
 
   constructor() {
     this.bot = new Telegraf(process.env.TG_BOT_TOKEN || '');
+    
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) {
+      throw new Error('ELEVENLABS_API_KEY is not set');
+    }
+    
+    console.log(`🔊 Initializing ElevenLabs client...`);
     this.elevenlabs = new ElevenLabsClient({
-      apiKey: process.env.ELEVENLABS_API_KEY
+      apiKey: apiKey
     });
 
     this.init();
