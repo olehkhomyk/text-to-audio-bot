@@ -53,7 +53,7 @@ export class TelegramBot {
 
       const audio = await this.elevenlabs.textToSpeech.convertAsStream(voiceId, {
         text: text,
-        model_id: "eleven_multilingual_v2" // підтримує українську!
+        model_id: "eleven_multilingual_v2"
       });
 
       // Збираємо stream в buffer

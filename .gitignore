@@ -1,11 +1,5 @@
-node_modules
-
-
-/src/generated/prisma
-
-/src/generated/prisma
-
-/src/generated/prisma
-
+node_modules/
+dist/
 .env
-/.env
+*.log
+.DS_Store
