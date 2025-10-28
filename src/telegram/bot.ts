@@ -8,17 +8,7 @@ export class TelegramBot {
 
   constructor() {
     this.bot = new Telegraf(process.env.TG_BOT_TOKEN || '');
-    const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
-
-    (async () => {
-      const res = await fetch('https://api.elevenlabs.io/v1/voices', {
-        headers: { 'xi-api-key': apiKey! }
-      });
-      console.log('EL voices probe status =', res.status);
-      if (res.status !== 200) {
-        console.log('EL voices probe body =', await res.text());
-      }
-    })();
+    const apiKey = process.env.ELEVENLABS_API_KEY;
 
     if (!apiKey) {
       throw new Error('ELEVENLABS_API_KEY is not set');
@@ -46,7 +36,7 @@ export class TelegramBot {
       this.bot.use(session());
       this.bot.start((ctx) => ctx.reply('Welcome'));
       this.initMessageListener();
-      
+
       console.log('🤖 Launching Telegram bot...');
       await this.bot.launch();
       console.log('✅ Telegram bot started successfully');
@@ -61,13 +51,13 @@ export class TelegramBot {
       this.elevenlabs
       const userText = ctx.message.text;
       await ctx.sendChatAction('record_voice');
-      await this.textToSpeech(userText, ctx);
+      await this.textToSpeechRest(userText, ctx);
     });
 
     this.bot.on(message('caption'), async (ctx) => {
       const userText = ctx.message.caption;
       await ctx.sendChatAction('record_voice');
-      await this.textToSpeech(userText, ctx);
+      await this.textToSpeechRest(userText, ctx);
     });
   }
 
@@ -86,6 +76,38 @@ export class TelegramBot {
         chunks.push(chunk);
       }
       const audioBuffer = Buffer.concat(chunks);
+      await ctx.replyWithVoice({ source: audioBuffer });
+    } catch (error) {
+      console.error('Error:', error);
+      await ctx.reply('Помилка генерації 😞');
+    }
+  }
+
+  private async textToSpeechRest(text: string, ctx: any) {
+    try {
+      const voiceId = "GVRiwBELe0czFUAJj0nX"; // Anton (UA)
+
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
+        method: 'POST',
+        headers: {
+          'xi-api-key': process.env.ELEVENLABS_API_KEY!,
+          'accept': 'audio/mpeg',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_multilingual_v2'
+        })
+      });
+
+      console.log('TTS status =', res.status);
+
+      if (res.status !== 200) {
+        console.error('TTS body =', await res.text()); // тут буде реальна причина
+      }
+
+      const arrayBuf = await res.arrayBuffer();
+      const audioBuffer = Buffer.from(arrayBuf);
       await ctx.replyWithVoice({ source: audioBuffer });
     } catch (error) {
       console.error('Error:', error);
