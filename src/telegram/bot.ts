@@ -11,7 +11,6 @@ export class TelegramBot {
     const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
 
     (async () => {
-      console.log('EL KEY LEN =', apiKey?.length);
       const res = await fetch('https://api.elevenlabs.io/v1/voices', {
         headers: { 'xi-api-key': apiKey! }
       });
@@ -23,10 +22,8 @@ export class TelegramBot {
 
     if (!apiKey) {
       throw new Error('ELEVENLABS_API_KEY is not set');
-    } else {
-      console.log(apiKey);
     }
-    
+
     console.log(`🔊 Initializing ElevenLabs client...`);
     this.elevenlabs = new ElevenLabsClient({ apiKey });
 
