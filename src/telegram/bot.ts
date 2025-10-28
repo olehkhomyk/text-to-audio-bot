@@ -84,34 +84,32 @@ export class TelegramBot {
   }
 
   private async textToSpeechRest(text: string, ctx: any) {
-    try {
-      const voiceId = "GVRiwBELe0czFUAJj0nX"; // Anton (UA)
+    const voiceId = "GVRiwBELe0czFUAJj0nX"; // Anton (UA)
 
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
-        method: 'POST',
-        headers: {
-          'xi-api-key': process.env.ELEVENLABS_API_KEY!,
-          'accept': 'audio/mpeg',
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify({
-          text,
-          model_id: 'eleven_multilingual_v2'
-        })
-      });
+    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': process.env.ELEVENLABS_API_KEY!,
+        'accept': 'audio/mpeg',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_multilingual_v2'
+      })
+    });
 
-      console.log('TTS status =', res.status);
+    console.log('TTS status =', res.status);
 
-      if (res.status !== 200) {
-        console.error('TTS body =', await res.text()); // тут буде реальна причина
-      }
-
-      const arrayBuf = await res.arrayBuffer();
-      const audioBuffer = Buffer.from(arrayBuf);
-      await ctx.replyWithVoice({ source: audioBuffer });
-    } catch (error) {
-      console.error('Error:', error);
+    if (res.status !== 200) {
+      const errText = await res.text();
+      console.error('TTS body =', errText);
       await ctx.reply('Помилка генерації 😞');
+      return; // 🔴 важливо: не читати тіло вдруге
     }
+
+    const arrayBuf = await res.arrayBuffer();
+    const audioBuffer = Buffer.from(arrayBuf);
+    await ctx.replyWithVoice({ source: audioBuffer });
   }
 }
