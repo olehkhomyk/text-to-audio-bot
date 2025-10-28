@@ -12,12 +12,12 @@ export class TelegramBot {
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
       throw new Error('ELEVENLABS_API_KEY is not set');
+    } else {
+      console.log(apiKey);
     }
     
     console.log(`🔊 Initializing ElevenLabs client...`);
-    this.elevenlabs = new ElevenLabsClient({
-      apiKey: apiKey
-    });
+    this.elevenlabs = new ElevenLabsClient({ apiKey });
 
     this.init();
     // this.listVoiceWithIds();
@@ -50,6 +50,7 @@ export class TelegramBot {
 
   async initMessageListener() {
     this.bot.on(message('text'), async (ctx) => {
+      this.elevenlabs
       const userText = ctx.message.text;
       await ctx.sendChatAction('record_voice');
       await this.textToSpeech(userText, ctx);
