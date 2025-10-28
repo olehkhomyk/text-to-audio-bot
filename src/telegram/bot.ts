@@ -8,8 +8,19 @@ export class TelegramBot {
 
   constructor() {
     this.bot = new Telegraf(process.env.TG_BOT_TOKEN || '');
-    
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
+
+    (async () => {
+      console.log('EL KEY LEN =', apiKey?.length);
+      const res = await fetch('https://api.elevenlabs.io/v1/voices', {
+        headers: { 'xi-api-key': apiKey! }
+      });
+      console.log('EL voices probe status =', res.status);
+      if (res.status !== 200) {
+        console.log('EL voices probe body =', await res.text());
+      }
+    })();
+
     if (!apiKey) {
       throw new Error('ELEVENLABS_API_KEY is not set');
     } else {
