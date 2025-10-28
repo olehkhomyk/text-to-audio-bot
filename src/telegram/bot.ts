@@ -27,10 +27,18 @@ export class TelegramBot {
   }
 
   private async init() {
-    this.bot.use(session());
-    this.bot.start((ctx) => ctx.reply('Welcome'));
-    this.initMessageListener();
-    await this.bot.launch();
+    try {
+      this.bot.use(session());
+      this.bot.start((ctx) => ctx.reply('Welcome'));
+      this.initMessageListener();
+      
+      console.log('🤖 Launching Telegram bot...');
+      await this.bot.launch();
+      console.log('✅ Telegram bot started successfully');
+    } catch (error) {
+      console.error('❌ Failed to launch Telegram bot:', error);
+      console.error('Bot will not be available, but server will continue running');
+    }
   }
 
   async initMessageListener() {

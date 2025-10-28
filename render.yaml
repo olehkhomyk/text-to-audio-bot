@@ -5,8 +5,11 @@ services:
     region: frankfurt
     plan: free
     buildCommand: npm install && npm run build
-    startCommand: npm start
+    startCommand: npm run start:build
     envVars:
       - key: NODE_ENV
         value: production
-
+      - key: TG_BOT_TOKEN
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
