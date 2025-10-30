@@ -1,28 +1,27 @@
 import { session, Telegraf } from 'telegraf';
 import { message } from 'telegraf/filters';
-import type { Update } from "telegraf/types";
 import { ElevenLabsClient } from "elevenlabs";
 import { Context } from 'telegraf';
 import { isNil } from 'lodash';
 
-interface MyContext <U extends Update = Update> extends Context<U> {
-  session: {
-    isAuthenticated: boolean
-  },
-}
-
 export class TelegramBot {
-  private bot: Telegraf<MyContext>;
+  private bot: Telegraf<Context>;
   private elevenlabs: ElevenLabsClient;
   private readonly BOT_PASSWORD?: string;
   private _mw?: any;
+
+  // Persistent storage for authenticated users (survives restarts)
+  private authenticatedUsers: Set<number> = new Set();
+
+  // Track users who are currently in password input mode
+  private awaitingPassword: Set<number> = new Set();
 
   middleware() {
     return this._mw;
   }
 
   constructor() {
-    this.bot = new Telegraf<MyContext>(process.env.TG_BOT_TOKEN || '');
+    this.bot = new Telegraf<Context>(process.env.TG_BOT_TOKEN || '');
     const apiKey = process.env.ELEVENLABS_API_KEY;
     this.BOT_PASSWORD = process.env.BOT_PASSWORD;
 
@@ -39,28 +38,88 @@ export class TelegramBot {
 
   public async init() {
     try {
-      this.bot.use(session({ defaultSession: () => ({ isAuthenticated: false }) }));
+      this.bot.use(session());
 
-      this.bot.start((ctx) => {
-        ctx.session.isAuthenticated = false;
+      // /start command - initiates authentication flow
+      this.bot.start(async (ctx) => {
+        const userId = ctx.from?.id;
+        if (!userId) return;
+
+        // Check if user is already authenticated
+        if (this.authenticatedUsers.has(userId)) {
+          return ctx.reply('✅ You are already authenticated! Send any text to convert it to voice.\n\nCommands:\n/help - Show available commands\n/auth - Re-authenticate');
+        }
+
+        // Start authentication flow
+        this.awaitingPassword.add(userId);
         return ctx.reply('🔐 Welcome! Please enter the password to use this bot.');
       });
 
-      this.bot.use(async (ctx, next) => {
-        if (ctx.session?.isAuthenticated) return next();
+      // /auth command - allows re-authentication
+      this.bot.command('auth', async (ctx) => {
+        const userId = ctx.from?.id;
+        if (!userId) return;
 
+        // Remove from authenticated users
+        this.authenticatedUsers.delete(userId);
+        this.awaitingPassword.add(userId);
+
+        return ctx.reply('🔐 Please enter the password to authenticate.');
+      });
+
+      // /help command
+      this.bot.command('help', async (ctx) => {
+        const helpMessage = `
+          📖 *Text to Audio Bot Help*
+          
+          *Available Commands:*
+          /start - Start the bot and authenticate
+          /auth - Re-authenticate with password
+          /help - Show this help message
+          
+          *How to use:*
+          1. Authenticate using /start or /auth
+          2. Send any text message or photo with caption
+          3. Receive audio voice message
+          
+          *Note:* After bot restart, you may need to use /auth to re-authenticate.
+        `;
+        return ctx.reply(helpMessage, { parse_mode: 'Markdown' });
+      });
+
+      // Authentication middleware
+      this.bot.use(async (ctx, next) => {
+        const userId = ctx.from?.id;
+        if (!userId) return;
+
+        // Check if user is authenticated
+        if (this.authenticatedUsers.has(userId)) {
+          return next();
+        }
+
+        // If user is awaiting password, check if this message is the password
         const maybeText = ('message' in ctx && (ctx as any).message?.text) || undefined;
 
-        if (maybeText && maybeText === this.BOT_PASSWORD) {
-          ctx.session.isAuthenticated = true;
-          await ctx.reply('✅ Access granted! Send any text to get voice.');
-          return;
+        if (this.awaitingPassword.has(userId) && maybeText) {
+          // Don't treat commands as password attempts
+          if (maybeText.startsWith('/')) {
+            return next();
+          }
+
+          // Check password
+          if (maybeText === this.BOT_PASSWORD) {
+            this.authenticatedUsers.add(userId);
+            this.awaitingPassword.delete(userId);
+            await ctx.reply('✅ Access granted! Send any text to convert it to voice.\n\nUse /help to see available commands.');
+            return;
+          } else {
+            await ctx.reply('❌ Incorrect password. Try again or use /start to restart.');
+            return;
+          }
         }
-        if (maybeText) {
-          await ctx.reply('❌ Incorrect password. Try again.');
-          return;
-        }
-        await ctx.reply('🔐 Please enter the password first.');
+
+        // User is not authenticated and not in password flow
+        await ctx.reply('🔐 Please authenticate first using /start or /auth command.');
       });
 
       this.initMessageListener();
@@ -102,7 +161,7 @@ export class TelegramBot {
     });
   }
 
-  private async textToSpeech(text: string, ctx: MyContext) {
+  private async textToSpeech(text: string, ctx: Context) {
     try {
       const voiceId = "GVRiwBELe0czFUAJj0nX"; // Anton (UA)
 
@@ -110,7 +169,7 @@ export class TelegramBot {
         text: text,
         model_id: "eleven_multilingual_v2",
         voice_settings: {
-          speed: 0.9
+          speed: 0.95
         }
       });
 
