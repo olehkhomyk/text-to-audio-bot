@@ -27,13 +27,10 @@ if (!process.env.ELEVENLABS_API_KEY) {
   console.log(`✅ ELEVENLABS_API_KEY loaded: ${keyPreview}`);
 }
 
-// Асинхронний запуск
 async function main() {
   try {
-    // Запускаємо сервер для Render
     await startServer();
     
-    // Запускаємо бота
     const bot = new TelegramBot();
     console.log('✅ Application started successfully');
   } catch (error) {

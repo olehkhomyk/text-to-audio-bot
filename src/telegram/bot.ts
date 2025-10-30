@@ -1,40 +1,77 @@
 import { session, Telegraf } from 'telegraf';
 import { message } from 'telegraf/filters';
+import type { Update } from "telegraf/types";
 import { ElevenLabsClient } from "elevenlabs";
+import { Context } from 'telegraf';
+import { isEqual, isNil } from 'lodash';
+
+interface MyContext <U extends Update = Update> extends Context<U> {
+  session: {
+    isAuthenticated: boolean
+  },
+};
 
 export class TelegramBot {
-  private bot: Telegraf;
+  private bot: Telegraf<MyContext>;
   private elevenlabs: ElevenLabsClient;
+  private readonly BOT_PASSWORD?: string;
 
   constructor() {
-    this.bot = new Telegraf(process.env.TG_BOT_TOKEN || '');
+    this.bot = new Telegraf<MyContext>(process.env.TG_BOT_TOKEN || '');
     const apiKey = process.env.ELEVENLABS_API_KEY;
+    this.BOT_PASSWORD = process.env.BOT_PASSWORD;
 
     if (!apiKey) {
       throw new Error('ELEVENLABS_API_KEY is not set');
     }
 
-    console.log(`🔊 Initializing ElevenLabs client...`);
+    if (isNil(this.BOT_PASSWORD)) {
+      console.warn('⚠️  BOT_PASSWORD not set, using default password. Please set BOT_PASSWORD environment variable!');
+    }
+
     this.elevenlabs = new ElevenLabsClient({ apiKey });
 
     this.init();
-    // this.listVoiceWithIds();
-  }
-
-  async listVoiceWithIds() {
-    const voices = await this.elevenlabs.voices.getAll();
-    voices.voices.forEach(voice => {
-      console.log(`Name: ${voice.name}`);
-      console.log(`ID: ${voice.voice_id}`);
-      console.log(`Category: ${voice.category}`);
-      console.log('---');
-    });
   }
 
   private async init() {
     try {
-      this.bot.use(session());
-      this.bot.start((ctx) => ctx.reply('Welcome'));
+      this.bot.use(session({ defaultSession: () => ({ isAuthenticated: false }) }));
+
+      this.bot.start((ctx) => {
+        ctx.session.isAuthenticated = false;
+        return ctx.reply('🔐 Welcome! Please enter the password to use this bot.');
+      });
+
+      // Authentication middleware
+      this.bot.use(async (ctx, next) => {
+        // Initialize session if not exists
+        if (isNil(ctx.session.isAuthenticated)) {
+          ctx.session.isAuthenticated = false;
+        }
+
+        // If authenticated, continue
+        if (ctx.session.isAuthenticated) {
+          return next();
+        }
+
+        // Check if message contains password
+        if ('text' in ctx.message!) {
+          const text = ctx.message.text;
+          if (isEqual(text, this.BOT_PASSWORD)) {
+            ctx.session.isAuthenticated = true;
+            await ctx.reply('✅ Access granted! You can now use the bot. Send me any text and I\'ll convert it to voice.');
+            return;
+          } else {
+            await ctx.reply('❌ Incorrect password. Please try again.');
+            return;
+          }
+        }
+
+        // For non-text messages without authentication
+        await ctx.reply('🔐 Please enter the password first.');
+      });
+
       this.initMessageListener();
 
       console.log('🤖 Launching Telegram bot...');
@@ -48,20 +85,19 @@ export class TelegramBot {
 
   async initMessageListener() {
     this.bot.on(message('text'), async (ctx) => {
-      this.elevenlabs
       const userText = ctx.message.text;
       await ctx.sendChatAction('record_voice');
-      await this.textToSpeechRest(userText, ctx);
+      await this.textToSpeech(userText, ctx);
     });
 
     this.bot.on(message('caption'), async (ctx) => {
       const userText = ctx.message.caption;
       await ctx.sendChatAction('record_voice');
-      await this.textToSpeechRest(userText, ctx);
+      await this.textToSpeech(userText, ctx);
     });
   }
 
-  private async textToSpeech(text: string, ctx: any) {
+  private async textToSpeech(text: string, ctx: MyContext) {
     try {
       const voiceId = "GVRiwBELe0czFUAJj0nX"; // Anton (UA)
 
@@ -83,33 +119,13 @@ export class TelegramBot {
     }
   }
 
-  private async textToSpeechRest(text: string, ctx: any) {
-    const voiceId = "GVRiwBELe0czFUAJj0nX"; // Anton (UA)
-
-    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
-      method: 'POST',
-      headers: {
-        'xi-api-key': process.env.ELEVENLABS_API_KEY!,
-        'accept': 'audio/mpeg',
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        text,
-        model_id: 'eleven_multilingual_v2'
-      })
+  async listVoiceWithIds() {
+    const voices = await this.elevenlabs.voices.getAll();
+    voices.voices.forEach(voice => {
+      console.log(`Name: ${voice.name}`);
+      console.log(`ID: ${voice.voice_id}`);
+      console.log(`Category: ${voice.category}`);
+      console.log('---');
     });
-
-    console.log('TTS status =', res.status);
-
-    if (res.status !== 200) {
-      const errText = await res.text();
-      console.error('TTS body =', errText);
-      await ctx.reply('Помилка генерації 😞');
-      return; // 🔴 важливо: не читати тіло вдруге
-    }
-
-    const arrayBuf = await res.arrayBuffer();
-    const audioBuffer = Buffer.from(arrayBuf);
-    await ctx.replyWithVoice({ source: audioBuffer });
   }
 }
