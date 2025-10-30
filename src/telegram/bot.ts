@@ -3,18 +3,23 @@ import { message } from 'telegraf/filters';
 import type { Update } from "telegraf/types";
 import { ElevenLabsClient } from "elevenlabs";
 import { Context } from 'telegraf';
-import { isEqual, isNil } from 'lodash';
+import { isNil } from 'lodash';
 
 interface MyContext <U extends Update = Update> extends Context<U> {
   session: {
     isAuthenticated: boolean
   },
-};
+}
 
 export class TelegramBot {
   private bot: Telegraf<MyContext>;
   private elevenlabs: ElevenLabsClient;
   private readonly BOT_PASSWORD?: string;
+  private _mw?: any;
+
+  middleware() {
+    return this._mw;
+  }
 
   constructor() {
     this.bot = new Telegraf<MyContext>(process.env.TG_BOT_TOKEN || '');
@@ -30,11 +35,9 @@ export class TelegramBot {
     }
 
     this.elevenlabs = new ElevenLabsClient({ apiKey });
-
-    this.init();
   }
 
-  private async init() {
+  public async init() {
     try {
       this.bot.use(session({ defaultSession: () => ({ isAuthenticated: false }) }));
 
@@ -43,47 +46,49 @@ export class TelegramBot {
         return ctx.reply('🔐 Welcome! Please enter the password to use this bot.');
       });
 
-      // Authentication middleware
       this.bot.use(async (ctx, next) => {
-        // Initialize session if not exists
-        if (isNil(ctx.session.isAuthenticated)) {
-          ctx.session.isAuthenticated = false;
-        }
+        if (ctx.session?.isAuthenticated) return next();
 
-        // If authenticated, continue
-        if (ctx.session.isAuthenticated) {
-          return next();
-        }
+        const maybeText = ('message' in ctx && (ctx as any).message?.text) || undefined;
 
-        // Check if message contains password
-        if ('text' in ctx.message!) {
-          const text = ctx.message.text;
-          if (isEqual(text, this.BOT_PASSWORD)) {
-            ctx.session.isAuthenticated = true;
-            await ctx.reply('✅ Access granted! You can now use the bot. Send me any text and I\'ll convert it to voice.');
-            return;
-          } else {
-            await ctx.reply('❌ Incorrect password. Please try again.');
-            return;
-          }
+        if (maybeText && maybeText === this.BOT_PASSWORD) {
+          ctx.session.isAuthenticated = true;
+          await ctx.reply('✅ Access granted! Send any text to get voice.');
+          return;
         }
-
-        // For non-text messages without authentication
+        if (maybeText) {
+          await ctx.reply('❌ Incorrect password. Try again.');
+          return;
+        }
         await ctx.reply('🔐 Please enter the password first.');
       });
 
       this.initMessageListener();
 
-      console.log('🤖 Launching Telegram bot...');
-      await this.bot.launch();
-      console.log('✅ Telegram bot started successfully');
+      const isProd = process.env.NODE_ENV === 'production';
+      const baseUrl = process.env.APP_BASE_URL;
+
+      if (isProd && baseUrl) {
+        // 👇 webhook mode
+        this._mw = await this.bot.createWebhook({
+          domain: baseUrl,
+          path: '/tg-webhook',
+          drop_pending_updates: true
+        });
+        console.log('📩 Webhook set:', `${baseUrl}/tg-webhook`);
+      } else {
+        // 👇 local polling
+        console.log('🤖 Launching Telegram bot (polling)...');
+        await this.bot.launch();
+        console.log('✅ Telegram bot started successfully');
+      }
     } catch (error) {
       console.error('❌ Failed to launch Telegram bot:', error);
       console.error('Bot will not be available, but server will continue running');
     }
   }
 
-  async initMessageListener() {
+  private async initMessageListener() {
     this.bot.on(message('text'), async (ctx) => {
       const userText = ctx.message.text;
       await ctx.sendChatAction('record_voice');
@@ -103,7 +108,10 @@ export class TelegramBot {
 
       const audio = await this.elevenlabs.textToSpeech.convertAsStream(voiceId, {
         text: text,
-        model_id: "eleven_multilingual_v2"
+        model_id: "eleven_multilingual_v2",
+        voice_settings: {
+          speed: 0.9
+        }
       });
 
       // Збираємо stream в buffer
@@ -119,7 +127,7 @@ export class TelegramBot {
     }
   }
 
-  async listVoiceWithIds() {
+  private async listVoiceWithIds() {
     const voices = await this.elevenlabs.voices.getAll();
     voices.voices.forEach(voice => {
       console.log(`Name: ${voice.name}`);
